@@ -1,10 +1,11 @@
 {
-  "name": "Cerebras LLM",
+  "name": "Any LLM",
   "version": "1.0.0",
-  "description": "Cerebras",
+  "description": "Generic OpenAI-compatible LLM plugin with configurable server URL, API key, and extra params",
   "services": [
     "stream_chat",
     "format_image_message",
-    "get_image_dimensions"
+    "get_image_dimensions",
+    "get_service_models"
   ]
 }

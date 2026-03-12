@@ -3,12 +3,12 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "mr_cerebras"
+name = "mr_any_llm"
 version = "1.0.0"
 authors = [
   { name="MindRoot" },
 ]
-description = "Cerebras LLM"
+description = "Generic OpenAI-compatible LLM plugin"
 requires-python = ">=3.8"
 dependencies = [
     "openai"

@@ -1,14 +1,15 @@
-# MindRoot Gemini Plugin
+# MindRoot Any LLM Plugin
 
-A plugin for integrating Google's Gemini LLM models into MindRoot, with support for streaming, multimodal inputs, and caching.
+A generic plugin for integrating any OpenAI-compatible LLM API into MindRoot.
 
 ## Features
 
 - Streaming text generation
 - Multimodal support (text + images)
-- Message caching system
-- Configurable model selection
-- Debug output support
+- Configurable server URL and API key
+- Extra parameters support (e.g., `extra_body` for provider-specific options)
+- Per-server client caching
+- Exponential backoff retry logic
 
 ## Installation
 
@@ -18,68 +19,37 @@ pip install -e .
 
 ## Configuration
 
-The plugin requires the following environment variables:
+The plugin uses the following environment variables:
 
-- `GOOGLE_API_KEY`: Your Google API key for accessing Gemini models
-- `DEFAULT_LLM_MODEL` (optional): Override the default model (defaults to "gemini-exp-1206")
-- `MR_DEBUG` (optional): Enable debug output when set to "True"
+- `ANY_LLM_SERVER_URL`: Base URL of the OpenAI-compatible API (e.g., `https://api.openai.com/v1`)
+- `ANY_LLM_API_KEY`: API key for the service
+- `AH_OVERRIDE_LLM_MODEL` (optional): Override the model name
+- `ANY_LLM_EXTRA_PARAMS` (optional): JSON dict of extra parameters to pass to the API call
+- `AH_DEBUG` (optional): Enable debug output when set to `True`
 
-## Available Models
+## Extra Params Example
 
-- `gemini-exp-1206` (default) - Base experimental model
-- `gemini-2.0-flash-exp` - Flash experimental model
-- `gemini-2.0-flash-thinking-exp-1219` - Flash model with thinking mode
+To disable thinking on a provider that supports it:
+
+```
+ANY_LLM_EXTRA_PARAMS={"extra_body": {"enable_thinking": false}}
+```
+
+This dict is merged into the `chat.completions.create()` call alongside `model`, `messages`, etc.
 
 ## Services
 
 ### stream_chat
-Streams text completions from Gemini models with support for:
-- Temperature control
-- Max token limits
-- Message caching
-- Multimodal inputs (text + images)
-- Debug output
+Streams text completions from any OpenAI-compatible API.
 
 ### format_image_message
-Formats images for Gemini's multimodal input:
-- Converts to base64
-- Proper MIME type handling (image/png)
-- Optimized for Gemini's content format
+Formats PIL images as base64 image_url content blocks.
 
 ### get_image_dimensions
-Returns supported image dimensions for Gemini models:
-- Max width: 4096px
-- Max height: 4096px
-- Max pixels: 16,777,216
+Returns max supported image dimensions (4096x4096).
 
-## Usage Example
-
-```python
-# Text only
-response = await stream_chat(model="gemini-exp-1206", messages=[
-    {"role": "user", "content": "Hello, how are you?"}
-])
-
-# With image
-from PIL import Image
-image = Image.open("example.png")
-image_content = await format_image_message(image)
-
-response = await stream_chat(model="gemini-exp-1206", messages=[
-    {"role": "user", "content": [
-        {"type": "text", "text": "What's in this image?"},
-        image_content
-    ]}
-])
-```
-
-## Development
-
-The plugin follows the MindRoot plugin architecture and includes:
-- Message caching system
-- Debug output capabilities
-- Error handling
-- Environment variable configuration
+### get_service_models
+Lists available models from the configured server.
 
 ## License
 
