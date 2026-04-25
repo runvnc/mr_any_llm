@@ -1,6 +1,7 @@
 from lib.providers.services import service
 import os
 import asyncio
+import socket
 import time
 from mindroot.lib.utils.backoff import ExponentialBackoff
 import base64
@@ -8,15 +9,23 @@ from io import BytesIO
 from openai import AsyncOpenAI
 import json
 
+# TCP_NODELAY: disable Nagle's algorithm to avoid up to 40ms buffering
+# on small streaming token chunks over localhost TCP.
+_TCP_NODELAY_OPT = (socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
 # Cache of AsyncOpenAI clients keyed by server URL
 _client_cache = {}
 
 def get_client(server_url, api_key):
     """Get or create a cached AsyncOpenAI client for the given server URL."""
     if server_url not in _client_cache:
+        import httpx
+        transport = httpx.AsyncHTTPTransport(socket_options=[_TCP_NODELAY_OPT])
+        http_client = httpx.AsyncClient(transport=transport)
         _client_cache[server_url] = AsyncOpenAI(
             base_url=server_url,
-            api_key=api_key
+            api_key=api_key,
+            http_client=http_client
         )
     return _client_cache[server_url]
 
