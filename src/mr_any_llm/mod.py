@@ -18,15 +18,20 @@ _client_cache = {}
 
 def get_client(server_url, api_key):
     """Get or create a cached AsyncOpenAI client for the given server URL."""
-    if server_url not in _client_cache:
-        import httpx
-        transport = httpx.AsyncHTTPTransport(socket_options=[_TCP_NODELAY_OPT])
-        http_client = httpx.AsyncClient(transport=transport)
-        _client_cache[server_url] = AsyncOpenAI(
-            base_url=server_url,
-            api_key=api_key,
-            http_client=http_client
-        )
+    try:
+        if server_url not in _client_cache:
+            import httpx
+            transport = httpx.AsyncHTTPTransport(socket_options=[_TCP_NODELAY_OPT])
+            http_client = httpx.AsyncClient(transport=transport)
+            _client_cache[server_url] = AsyncOpenAI(
+                base_url=server_url,
+                api_key=api_key,
+                http_client=http_client
+            )
+        else:
+            print("any llm client cached already?")
+    except Exception as e:
+        print("ANY LLM error", str(e))
     return _client_cache[server_url]
 
 # Backoff managers for different error types
