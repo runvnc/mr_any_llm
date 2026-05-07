@@ -157,14 +157,16 @@ async def get_service_models(context=None):
     try:
         server_url = os.environ.get("ANY_LLM_SERVER_URL", "https://api.openai.com/v1")
         api_key = os.environ.get("ANY_LLM_API_KEY", "")
+        print("00")
         client = get_client(server_url, api_key)
-
+        print("11")
         for attempt in range(_MAX_RETRIES):
             try:
+                print('22')
                 wait_429 = _429_backoff.get_wait_time(identifier)
                 wait_503 = _503_backoff.get_wait_time(identifier)
                 wait_time = max(wait_429, wait_503)
-
+                print('33')
                 if wait_time > 0:
                     print(f"mr_any_llm backoff: waiting {wait_time:.2f}s before attempt {attempt + 1}")
                     await asyncio.sleep(wait_time)
