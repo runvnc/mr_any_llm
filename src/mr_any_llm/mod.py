@@ -164,6 +164,8 @@ async def get_service_models(context=None):
         server_url = os.environ.get("ANY_LLM_SERVER_URL", "https://api.openai.com/v1")
         api_key = os.environ.get("ANY_LLM_API_KEY", "")
         print("ANY LLM 00")
+        print("ANY_LLM_SERVER_URL", server_url)
+        print("ANY_LLM_API_KEY", api_key)
         client = get_client(server_url, api_key)
         print("ANY LLM 11")
         for attempt in range(_MAX_RETRIES):
