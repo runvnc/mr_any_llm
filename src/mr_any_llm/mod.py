@@ -152,6 +152,7 @@ async def get_image_dimensions(context=None):
 @service()
 async def get_service_models(context=None):
     """Get available models for the service"""
+    print("get service models!!")
     identifier = "get_service_models"
     try:
         server_url = os.environ.get("ANY_LLM_SERVER_URL", "https://api.openai.com/v1")
