@@ -168,9 +168,13 @@ async def get_service_models(context=None):
                     print(f"mr_any_llm backoff: waiting {wait_time:.2f}s before attempt {attempt + 1}")
                     await asyncio.sleep(wait_time)
 
+                print("Loading LLM models..")
                 all_models = await client.models.list()
+                print("models:")
+                print(all_models)
                 ids = [model.id for model in all_models.data]
-
+                print("ids:")
+                print(ids)
                 _429_backoff.record_success(identifier)
                 _503_backoff.record_success(identifier)
                 return {'stream_chat': ids}
