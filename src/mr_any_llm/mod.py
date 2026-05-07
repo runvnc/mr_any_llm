@@ -155,14 +155,15 @@ async def get_service_models(context=None):
     print("get service models!!")
     identifier = "get_service_models"
     try:
+        print("ANY LLM 0000")
         server_url = os.environ.get("ANY_LLM_SERVER_URL", "https://api.openai.com/v1")
         api_key = os.environ.get("ANY_LLM_API_KEY", "")
-        print("00")
+        print("ANY LLM 00")
         client = get_client(server_url, api_key)
-        print("11")
+        print("ANY LLM 11")
         for attempt in range(_MAX_RETRIES):
             try:
-                print('22')
+                print('ANY LLM 22')
                 wait_429 = _429_backoff.get_wait_time(identifier)
                 wait_503 = _503_backoff.get_wait_time(identifier)
                 wait_time = max(wait_429, wait_503)
