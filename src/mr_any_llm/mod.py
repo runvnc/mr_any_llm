@@ -17,22 +17,19 @@ _TCP_NODELAY_OPT = (socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 _client_cache = {}
 
 def get_client(server_url, api_key):
-    """Get or create a cached AsyncOpenAI client for the given server URL."""
-    try:
-        if server_url not in _client_cache:
-            import httpx
-            transport = httpx.AsyncHTTPTransport(socket_options=[_TCP_NODELAY_OPT])
-            http_client = httpx.AsyncClient(transport=transport)
-            _client_cache[server_url] = AsyncOpenAI(
-                base_url=server_url,
-                api_key=api_key,
-                http_client=http_client
-            )
-        else:
-            print("any llm client cached already?")
-    except Exception as e:
-        print("ANY LLM error", str(e))
-    return _client_cache[server_url]
+    """Get or create a cached AsyncOpenAI client for the given server URL/API key."""
+    import hashlib
+    cache_key = (server_url, hashlib.sha256((api_key or "").encode("utf-8")).hexdigest())
+    if cache_key not in _client_cache:
+        import httpx
+        transport = httpx.AsyncHTTPTransport(socket_options=[_TCP_NODELAY_OPT])
+        http_client = httpx.AsyncClient(transport=transport)
+        _client_cache[cache_key] = AsyncOpenAI(
+            base_url=server_url,
+            api_key=api_key,
+            http_client=http_client
+        )
+    return _client_cache[cache_key]
 
 # Backoff managers for different error types
 _429_backoff = ExponentialBackoff(initial_delay=1.0, max_delay=30.0, factor=2.0, jitter=True)
@@ -40,18 +37,36 @@ _503_backoff = ExponentialBackoff(initial_delay=0.25, max_delay=30.0, factor=2.0
 _MAX_RETRIES = 8
 
 def concat_text_lists(message):
-    """Concatenate text lists into a single string"""
-    out_str = ""
-    if isinstance(message['content'], str):
+    """Normalize legacy text-list content while preserving OpenAI multimodal blocks."""
+    content = message.get('content')
+    if isinstance(content, str):
         return message
-    else:
-        for item in message['content']:
-            if isinstance(item, str):
-                out_str += item + "\n"
+    if not isinstance(content, list):
+        return message
+
+    # Preserve OpenAI multimodal content such as image_url/input_audio blocks.
+    for item in content:
+        if isinstance(item, dict) and item.get('type') in ('image_url', 'input_audio'):
+            return message
+
+    text_parts = []
+    for item in content:
+        if isinstance(item, str):
+            text_parts.append(item)
+        elif isinstance(item, dict):
+            if item.get('type') == 'text' and 'text' in item:
+                text_parts.append(str(item.get('text') or ''))
+            elif 'text' in item and len(item) == 1:
+                text_parts.append(str(item.get('text') or ''))
             else:
-                out_str += item['text'] + "\n"
-    message.update({'content': out_str})
-    return message
+                # Unknown structured content: preserve original rather than corrupting it.
+                return message
+        else:
+            return message
+
+    new_message = dict(message)
+    new_message['content'] = "\n".join(p for p in text_parts if p)
+    return new_message
 
 @service()
 async def stream_chat(model, messages=[], context=None, num_ctx=200000,
@@ -121,11 +136,51 @@ async def stream_chat(model, messages=[], context=None, num_ctx=200000,
                     raise
 
         async def content_stream(original_stream):
+            pending_content = ''
+            last_content_flush = time.monotonic()
+            flush_interval = float(os.environ.get("AH_STREAM_FLUSH_INTERVAL", "0.025"))
+            flush_chars = int(os.environ.get("AH_STREAM_FLUSH_CHARS", "512"))
+            slow_after_chars = int(os.environ.get("AH_STREAM_FLUSH_SLOW_AFTER_CHARS", "2000"))
+            slow_interval = float(os.environ.get("AH_STREAM_FLUSH_SLOW_INTERVAL", "0.5"))
+            slow_flush_chars = int(os.environ.get("AH_STREAM_FLUSH_SLOW_CHARS", "4096"))
+            very_slow_after_chars = int(os.environ.get("AH_STREAM_FLUSH_VERY_SLOW_AFTER_CHARS", "8000"))
+            very_slow_interval = float(os.environ.get("AH_STREAM_FLUSH_VERY_SLOW_INTERVAL", "1.0"))
+            very_slow_flush_chars = int(os.environ.get("AH_STREAM_FLUSH_VERY_SLOW_CHARS", "8192"))
+            streamed_content_chars = 0
+            def current_flush_interval():
+                return very_slow_interval if streamed_content_chars >= very_slow_after_chars else slow_interval if streamed_content_chars >= slow_after_chars else flush_interval
+            def current_flush_chars():
+                return very_slow_flush_chars if streamed_content_chars >= very_slow_after_chars else slow_flush_chars if streamed_content_chars >= slow_after_chars else flush_chars
             async for chunk in original_stream:
+                choices = getattr(chunk, 'choices', None) or []
+                if not choices:
+                    continue
+                delta = getattr(choices[0], 'delta', None)
+                content = getattr(delta, 'content', None) if delta is not None else None
                 if os.environ.get('AH_DEBUG') == 'True':
-                    print('\033[92m' + str(chunk.choices[0].delta.content) + '\033[0m', end='')
-                if chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content or ""
+                    print('\033[92m' + str(content) + '\033[0m', end='')
+                if content:
+                    if flush_interval <= 0 or flush_chars <= 0:
+                        yield content or ""
+                    else:
+                        pending_content += content or ""
+                        now = time.monotonic()
+                        interval = current_flush_interval()
+                        chars = current_flush_chars()
+                        stripped = pending_content.rstrip()
+                        if (
+                            len(pending_content) >= chars
+                            or (now - last_content_flush) >= interval
+                            or stripped.endswith(']')
+                        ):
+                            yield pending_content
+                            streamed_content_chars += len(pending_content)
+                            pending_content = ''
+                            last_content_flush = now
+
+            if pending_content:
+                streamed_content_chars += len(pending_content)
+                yield pending_content
 
         return content_stream(stream)
 
@@ -165,7 +220,7 @@ async def get_service_models(context=None):
         api_key = os.environ.get("ANY_LLM_API_KEY", "")
         print("ANY LLM 00")
         print("ANY_LLM_SERVER_URL", server_url)
-        print("ANY_LLM_API_KEY", api_key)
+        print("ANY_LLM_API_KEY", "<set>" if api_key else "<empty>")
         client = get_client(server_url, api_key)
         print("ANY LLM 11")
         for attempt in range(_MAX_RETRIES):
