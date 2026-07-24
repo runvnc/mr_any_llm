@@ -36,6 +36,27 @@ _429_backoff = ExponentialBackoff(initial_delay=1.0, max_delay=30.0, factor=2.0,
 _503_backoff = ExponentialBackoff(initial_delay=0.25, max_delay=30.0, factor=2.0, jitter=True)
 _MAX_RETRIES = 8
 
+def anthropic_image_to_openai(part):
+    """Convert an Anthropic-native image block to OpenAI 'image_url' format."""
+    if not isinstance(part, dict) or part.get('type') != 'image':
+        return part
+    source = part.get('source')
+    if not isinstance(source, dict):
+        return part
+    src_type = source.get('type')
+    url = None
+    if src_type == 'base64':
+        media_type = source.get('media_type') or 'image/png'
+        data = source.get('data') or ''
+        if data:
+            url = f"data:{media_type};base64,{data}"
+    elif src_type == 'url':
+        url = source.get('url')
+    if not url:
+        return part
+    return {'type': 'image_url', 'image_url': {'url': url}}
+
+
 def concat_text_lists(message):
     """Normalize legacy text-list content while preserving OpenAI multimodal blocks."""
     content = message.get('content')
@@ -43,6 +64,16 @@ def concat_text_lists(message):
         return message
     if not isinstance(content, list):
         return message
+
+    # Chat logs persist whatever format_image_message() produced, and the agent's
+    # LLM can be switched between turns, so an image may arrive in Anthropic's
+    # native {'type': 'image', 'source': {...}} shape. Convert it to OpenAI
+    # 'image_url' rather than passing something the endpoint will reject.
+    if any(isinstance(item, dict) and item.get('type') == 'image'
+           and isinstance(item.get('source'), dict) for item in content):
+        new_message = dict(message)
+        new_message['content'] = [anthropic_image_to_openai(item) for item in content]
+        return new_message
 
     # Preserve OpenAI multimodal content such as image_url/input_audio blocks.
     for item in content:
